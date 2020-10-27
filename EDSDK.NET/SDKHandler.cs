@@ -1,7 +1,10 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Drawing;
 using System.Threading;
+using System.Globalization;
+using System.Drawing.Imaging;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -108,6 +111,7 @@ namespace EDSDK.NET
         public delegate void CameraAddedHandler();
         public delegate void ProgressHandler(int Progress);
         public delegate void StreamUpdate(Stream img);
+        public delegate void BitmapUpdate(Bitmap bmp);
 
         /// <summary>
         /// Fires if a camera is added
@@ -125,6 +129,10 @@ namespace EDSDK.NET
         /// If the camera is disconnected or shuts down, this event is fired
         /// </summary>
         public event EventHandler CameraHasShutdown;
+        /// <summary>
+        /// If an image is downloaded, this event fires with the downloaded image.
+        /// </summary>
+        public event BitmapUpdate ImageDownloaded;
 
         #endregion
 
@@ -603,7 +611,7 @@ namespace EDSDK.NET
             {
                 SendSDKCommand(delegate
                 {
-                    // Bitmap bmp = null;
+                    Bitmap bmp = null;
                     IntPtr streamRef, jpgPointer = IntPtr.Zero;
                     ulong length = 0;
 
@@ -621,7 +629,7 @@ namespace EDSDK.NET
                         using (UnmanagedMemoryStream ums = new UnmanagedMemoryStream((byte*)jpgPointer.ToPointer(), (long)length, (long)length, FileAccess.Read))
                         {
                             //create bitmap from stream (it's a normal jpeg image)
-                            // bmp = new Bitmap(ums);
+                            bmp = new Bitmap(ums);
                         }
                     }
 
@@ -629,7 +637,7 @@ namespace EDSDK.NET
                     Error = EdsRelease(streamRef);
 
                     //Fire the event with the image
-                    // if (ImageDownloaded != null) ImageDownloaded(bmp);
+                    if (ImageDownloaded != null) ImageDownloaded(bmp);
                 }, true);
             }
             else
@@ -639,7 +647,19 @@ namespace EDSDK.NET
                 Error = EdsRelease(ObjectPointer);
             }
         }
-        
+
+        /// <summary>
+        /// Gets the thumbnail of an image (can be raw or jpg)
+        /// </summary>
+        /// <param name="filepath">The filename of the image</param>
+        /// <returns>The thumbnail of the image</returns>
+        public Bitmap GetFileThumb(string filepath)
+        {
+            IntPtr stream;
+            //create a filestream to given file
+            Error = EdsCreateFileStream(filepath, EdsFileCreateDisposition.OpenExisting, EdsAccess.Read, out stream);
+            return GetImage(stream, EdsImageSource.Thumbnail);
+        }
 
         /// <summary>
         /// Downloads data from the camera
@@ -668,73 +688,73 @@ namespace EDSDK.NET
             }
         }
 
-        // /// <summary>
-        // /// Creates a Bitmap out of a stream
-        // /// </summary>
-        // /// <param name="img_stream">Image stream</param>
-        // /// <param name="imageSource">Type of image</param>
-        // /// <returns>The bitmap from the stream</returns>
-        // private Bitmap GetImage(IntPtr img_stream, EdsImageSource imageSource)
-        // {
-        //     IntPtr stream = IntPtr.Zero;
-        //     IntPtr img_ref = IntPtr.Zero;
-        //     IntPtr streamPointer = IntPtr.Zero;
-        //     EdsImageInfo imageInfo;
-        //
-        //     try
-        //     {
-        //         //create reference and get image info
-        //         Error = EdsCreateImageRef(img_stream, out img_ref);
-        //         Error = EdsGetImageInfo(img_ref, imageSource, out imageInfo);
-        //
-        //         EdsSize outputSize = new EdsSize();
-        //         outputSize.width = imageInfo.EffectiveRect.width;
-        //         outputSize.height = imageInfo.EffectiveRect.height;
-        //         //calculate amount of data
-        //         int datalength = outputSize.height * outputSize.width * 3;
-        //         //create buffer that stores the image
-        //         byte[] buffer = new byte[datalength];
-        //         //create a stream to the buffer
-        //
-        //         IntPtr ptr = new IntPtr();
-        //         Marshal.StructureToPtr<byte[]>(buffer, ptr, false);
-        //
-        //
-        //         Error = EdsCreateMemoryStreamFromPointer(ptr, (uint)datalength, out stream);
-        //         //load image into the buffer
-        //         Error = EdsGetImage(img_ref, imageSource, EdsTargetImageType.RGB, imageInfo.EffectiveRect, outputSize, stream);
-        //
-        //         //create output bitmap
-        //         Bitmap bmp = new Bitmap(outputSize.width, outputSize.height, PixelFormat.Format24bppRgb);
-        //
-        //         //assign values to bitmap and make BGR from RGB (System.Drawing (i.e. GDI+) uses BGR)
-        //         unsafe
-        //         {
-        //             BitmapData data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, bmp.PixelFormat);
-        //
-        //             byte* outPix = (byte*)data.Scan0;
-        //             fixed (byte* inPix = buffer)
-        //             {
-        //                 for (int i = 0; i < datalength; i += 3)
-        //                 {
-        //                     outPix[i] = inPix[i + 2];//Set B value with R value
-        //                     outPix[i + 1] = inPix[i + 1];//Set G value
-        //                     outPix[i + 2] = inPix[i];//Set R value with B value
-        //                 }
-        //             }
-        //             bmp.UnlockBits(data);
-        //         }
-        //
-        //         return bmp;
-        //     }
-        //     finally
-        //     {
-        //         //Release all data
-        //         if (img_stream != IntPtr.Zero) EdsRelease(img_stream);
-        //         if (img_ref != IntPtr.Zero) EdsRelease(img_ref);
-        //         if (stream != IntPtr.Zero) EdsRelease(stream);
-        //     }
-        // }
+        /// <summary>
+        /// Creates a Bitmap out of a stream
+        /// </summary>
+        /// <param name="img_stream">Image stream</param>
+        /// <param name="imageSource">Type of image</param>
+        /// <returns>The bitmap from the stream</returns>
+        private Bitmap GetImage(IntPtr img_stream, EdsImageSource imageSource)
+        {
+            IntPtr stream = IntPtr.Zero;
+            IntPtr img_ref = IntPtr.Zero;
+            IntPtr streamPointer = IntPtr.Zero;
+            EdsImageInfo imageInfo;
+
+            try
+            {
+                //create reference and get image info
+                Error = EdsCreateImageRef(img_stream, out img_ref);
+                Error = EdsGetImageInfo(img_ref, imageSource, out imageInfo);
+
+                EdsSize outputSize = new EdsSize();
+                outputSize.width = imageInfo.EffectiveRect.width;
+                outputSize.height = imageInfo.EffectiveRect.height;
+                //calculate amount of data
+                int datalength = outputSize.height * outputSize.width * 3;
+                //create buffer that stores the image
+                byte[] buffer = new byte[datalength];
+                //create a stream to the buffer
+
+                IntPtr ptr = new IntPtr();
+                Marshal.StructureToPtr<byte[]>(buffer, ptr, false);
+
+
+                Error = EdsCreateMemoryStreamFromPointer(ptr, (uint)datalength, out stream);
+                //load image into the buffer
+                Error = EdsGetImage(img_ref, imageSource, EdsTargetImageType.RGB, imageInfo.EffectiveRect, outputSize, stream);
+
+                //create output bitmap
+                Bitmap bmp = new Bitmap(outputSize.width, outputSize.height, PixelFormat.Format24bppRgb);
+
+                //assign values to bitmap and make BGR from RGB (System.Drawing (i.e. GDI+) uses BGR)
+                unsafe
+                {
+                    BitmapData data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, bmp.PixelFormat);
+
+                    byte* outPix = (byte*)data.Scan0;
+                    fixed (byte* inPix = buffer)
+                    {
+                        for (int i = 0; i < datalength; i += 3)
+                        {
+                            outPix[i] = inPix[i + 2];//Set B value with R value
+                            outPix[i + 1] = inPix[i + 1];//Set G value
+                            outPix[i + 2] = inPix[i];//Set R value with B value
+                        }
+                    }
+                    bmp.UnlockBits(data);
+                }
+
+                return bmp;
+            }
+            finally
+            {
+                //Release all data
+                if (img_stream != IntPtr.Zero) EdsRelease(img_stream);
+                if (img_ref != IntPtr.Zero) EdsRelease(img_ref);
+                if (stream != IntPtr.Zero) EdsRelease(stream);
+            }
+        }
 
         #endregion
 
@@ -1306,7 +1326,7 @@ namespace EDSDK.NET
                         IntPtr stream;
                         Error = EdsCreateMemoryStream(0, out stream);
                         SendSDKCommand(delegate { Error = EdsDownloadThumbnail(ChildPtr, stream); });
-                        // MainEntry[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
+                        MainEntry[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
                     }
                     else
                     {
