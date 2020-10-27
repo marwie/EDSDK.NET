@@ -716,8 +716,11 @@ namespace EDSDK.NET
                 byte[] buffer = new byte[datalength];
                 //create a stream to the buffer
 
-                IntPtr ptr = new IntPtr();
-                Marshal.StructureToPtr<byte[]>(buffer, ptr, false);
+                // IntPtr ptr = new IntPtr();
+                // IntPtr ptr = Marshal.AllocHGlobal(datalength);
+                // Marshal.StructureToPtr<byte[]>(buffer, ptr, false);
+                GCHandle pinnedArray = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                IntPtr ptr = pinnedArray.AddrOfPinnedObject();
 
 
                 Error = EdsCreateMemoryStreamFromPointer(ptr, (uint)datalength, out stream);
@@ -744,6 +747,12 @@ namespace EDSDK.NET
                     }
                     bmp.UnlockBits(data);
                 }
+
+                // EdsGetDirectoryItemInfo(img_stream, out var fileAttr);
+                // Console.WriteLine(fileAttr);
+                // bmp.Save(@"C:\Users\user\Downloads\imgs\" +fileAttr.szFileName + ".jpg");
+                
+                pinnedArray.Free();
 
                 return bmp;
             }
@@ -1326,7 +1335,18 @@ namespace EDSDK.NET
                         IntPtr stream;
                         Error = EdsCreateMemoryStream(0, out stream);
                         SendSDKCommand(delegate { Error = EdsDownloadThumbnail(ChildPtr, stream); });
-                        MainEntry[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
+                        Console.WriteLine(ChildInfo.szFileName);
+                        
+                        DownloadImage(ChildPtr, @"C:\Users\user\Downloads\imgs\full");
+                        ImageDownloaded += btm =>
+                        {
+                            Console.WriteLine("DOWNLOADED " + btm);
+                            EdsDeleteDirectoryItem(ChildPtr);
+                            // EdsRelease(ChildPtr);
+                        };
+                        // MainEntry[i].Name = 
+                        if(ChildInfo.szFileName.ToLower().EndsWith(".jpg"))
+                            MainEntry[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
                     }
                     else
                     {
@@ -1335,7 +1355,7 @@ namespace EDSDK.NET
                         if (retval != null) MainEntry[i].AddSubEntries(retval);
                     }
                     //release current children
-                    EdsRelease(ChildPtr);
+                    // EdsRelease(ChildPtr);
                 }
                 return MainEntry;
             }
