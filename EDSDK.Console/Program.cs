@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using EDSDK.NET;
 
@@ -20,6 +19,11 @@ namespace EDSDK
         
         public static async Task Main(string[] args)
         {
+            Console.WriteLine(args[0]);
+            await Task.Delay(2000);
+
+            return;
+            
             sdk = new SDKHandler();
             sdk.SDKObjectEvent += OnObject;
             // sdk.ImageSaveDirectory = @"C:\Users\user\Downloads\imgs";
